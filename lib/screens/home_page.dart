@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
-import '../states/game_state.dart';
+import 'package:uts/states/auth_state.dart';
 import '../widgets/logo.dart';
 import '../widgets/back_button.dart';
 
@@ -35,7 +34,7 @@ class HomePage extends StatelessWidget {
     );
   }
 
-//build layout untuk screen HP
+  //build layout untuk screen HP
   Widget _buildNarrowLayout(BuildContext context, BoxConstraints constraints) {
     // Ukuran dinamis
     final screenWidth = constraints.maxWidth;
@@ -51,15 +50,22 @@ class HomePage extends StatelessWidget {
       child: Center(
         child: SingleChildScrollView(
           child: Padding(
-            padding: EdgeInsets.symmetric(horizontal: horizontalPadding)
-                .copyWith(bottom: verticalSpacingLarge),
+            padding: EdgeInsets.symmetric(
+              horizontal: horizontalPadding,
+            ).copyWith(bottom: verticalSpacingLarge),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Logo(size: logoSize),
                 SizedBox(height: verticalSpacingSmall),
-                _buildMenu(context, welcomeFontSize, buttonFontSize,
-                    verticalSpacingLarge, verticalSpacingSmall, screenHeight),
+                _buildMenu(
+                  context,
+                  welcomeFontSize,
+                  buttonFontSize,
+                  verticalSpacingLarge,
+                  verticalSpacingSmall,
+                  screenHeight,
+                ),
               ],
             ),
           ),
@@ -68,7 +74,7 @@ class HomePage extends StatelessWidget {
     );
   }
 
-//build layout untuk layar lebar dan rotate
+  //build layout untuk layar lebar dan rotate
   Widget _buildWideLayout(BuildContext context, BoxConstraints constraints) {
     // Ukuran dinamis
     final screenWidth = constraints.maxWidth;
@@ -93,12 +99,13 @@ class HomePage extends StatelessWidget {
             Expanded(
               flex: 1,
               child: _buildMenu(
-                  context,
-                  welcomeFontSize,
-                  buttonFontSize,
-                  verticalSpacingLarge,
-                  verticalSpacingSmall,
-                  screenHeight),
+                context,
+                welcomeFontSize,
+                buttonFontSize,
+                verticalSpacingLarge,
+                verticalSpacingSmall,
+                screenHeight,
+              ),
             ),
           ],
         ),
@@ -106,26 +113,53 @@ class HomePage extends StatelessWidget {
     );
   }
 
-//wdiget Menu
+  //wdiget Menu
   Widget _buildMenu(
-      BuildContext context,
-      double welcomeFontSize,
-      double buttonFontSize,
-      double verticalSpacingLarge,
-      double verticalSpacingSmall,
-      double screenHeight) {
+    BuildContext context,
+    double welcomeFontSize,
+    double buttonFontSize,
+    double verticalSpacingLarge,
+    double verticalSpacingSmall,
+    double screenHeight,
+  ) {
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         // Teks selamat datang
-        Text(
-          'Selamat Datang!!\n${context.watch<GameState>().playerName}',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.black,
-            fontSize: welcomeFontSize,
-            fontWeight: FontWeight.bold,
-          ),
+        FutureBuilder(
+          future: AuthService.getSession(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const CircularProgressIndicator();
+            }
+
+            if (snapshot.hasError || snapshot.data == null) {
+              return Text(
+                'Selamat Datang!!\nGuest',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.black,
+                  fontSize: welcomeFontSize,
+                  fontWeight: FontWeight.bold,
+                ),
+              );
+            }
+
+            final user = snapshot.data?['result'] as Map<String, dynamic>;
+
+            // 🔥 SESUAIKAN DENGAN RESPONSE BACKEND
+            final username = user['username'] ?? 'User';
+
+            return Text(
+              'Selamat Datang!!\n$username',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.black,
+                fontSize: welcomeFontSize,
+                fontWeight: FontWeight.bold,
+              ),
+            );
+          },
         ),
         SizedBox(height: verticalSpacingLarge),
 
@@ -136,9 +170,7 @@ class HomePage extends StatelessWidget {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.black,
               foregroundColor: Colors.white,
-              padding: EdgeInsets.symmetric(
-                vertical: screenHeight * 0.025,
-              ),
+              padding: EdgeInsets.symmetric(vertical: screenHeight * 0.025),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
@@ -164,9 +196,7 @@ class HomePage extends StatelessWidget {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white,
               foregroundColor: Colors.black,
-              padding: EdgeInsets.symmetric(
-                vertical: screenHeight * 0.025,
-              ),
+              padding: EdgeInsets.symmetric(vertical: screenHeight * 0.025),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
@@ -176,6 +206,61 @@ class HomePage extends StatelessWidget {
             },
             child: Text(
               'Panduan',
+              style: TextStyle(
+                fontSize: buttonFontSize,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+
+        SizedBox(height: verticalSpacingSmall),
+
+        // Tombol Panduan
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+              padding: EdgeInsets.symmetric(vertical: screenHeight * 0.025),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+            onPressed: () async {
+              context.go("/leaderboard");
+            },
+            child: Text(
+              'Leaderboard',
+              style: TextStyle(
+                fontSize: buttonFontSize,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
+
+        SizedBox(height: verticalSpacingSmall),
+
+        // Tombol Panduan
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.black,
+              padding: EdgeInsets.symmetric(vertical: screenHeight * 0.025),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+            onPressed: () async {
+              await AuthService.logout();
+              context.go("/login");
+            },
+            child: Text(
+              'Logout',
               style: TextStyle(
                 fontSize: buttonFontSize,
                 fontWeight: FontWeight.bold,

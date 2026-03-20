@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:provider/provider.dart';
-import '../states/game_state.dart';
 import '../widgets/logo.dart';
 import '../widgets/back_button.dart';
 
@@ -28,7 +26,6 @@ class EndPage extends StatelessWidget {
         elevation: 0,
         leading: BackButtonWidget(
           onPressed: () {
-            context.read<GameState>().resetGame();
             context.go('/login');
           },
         ),
@@ -68,18 +65,27 @@ class EndPage extends StatelessWidget {
     final spacingSmall = screenHeight * 0.02;
     final spacingLarge = screenHeight * 0.05;
 
-    return SingleChildScrollView( //rotasi
+    return SingleChildScrollView(
+      //rotasi
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: paddingHorizontal)
-            .copyWith(top: spacingSmall, bottom: spacingLarge),
+        padding: EdgeInsets.symmetric(
+          horizontal: paddingHorizontal,
+        ).copyWith(top: spacingSmall, bottom: spacingLarge),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Logo(size: logoSize),
               SizedBox(height: spacingSmall),
-              _buildScoreboard(context, textFont, buttonFont, screenHeight,
-                  screenWidth, spacingSmall, spacingLarge),
+              _buildScoreboard(
+                context,
+                textFont,
+                buttonFont,
+                screenHeight,
+                screenWidth,
+                spacingSmall,
+                spacingLarge,
+              ),
             ],
           ),
         ),
@@ -110,27 +116,33 @@ class EndPage extends StatelessWidget {
           SizedBox(width: paddingHorizontal / 2),
           Expanded(
             flex: 1,
-            child: _buildScoreboard(context, textFont, buttonFont, screenHeight,
-                screenWidth, spacingSmall, spacingLarge),
+            child: _buildScoreboard(
+              context,
+              textFont,
+              buttonFont,
+              screenHeight,
+              screenWidth,
+              spacingSmall,
+              spacingLarge,
+            ),
           ),
         ],
       ),
     );
   }
 
-
   Widget _buildScoreboard(
-      BuildContext context,
-      double textFont,
-      double buttonFont,
-      double screenHeight,
-      double screenWidth,
-      double spacingSmall,
-      double spacingLarge) {
+    BuildContext context,
+    double textFont,
+    double buttonFont,
+    double screenHeight,
+    double screenWidth,
+    double spacingSmall,
+    double spacingLarge,
+  ) {
     final formatter = NumberFormat("#,###", "id_ID");
     final bool isWin = totalMoney >= 1000000000000;
-    final String resultText =
-    isWin ? "Selamat! Anda Menang" : "Anda Kalah ";
+    final String resultText = isWin ? "Selamat! Anda Menang" : "Anda Kalah ";
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -147,10 +159,7 @@ class EndPage extends StatelessWidget {
         Text(
           'Pemain: ${Uri.decodeComponent(playerName)}',
           textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: textFont * 0.9,
-            color: Colors.black,
-          ),
+          style: TextStyle(fontSize: textFont * 0.9, color: Colors.black),
         ),
         SizedBox(height: spacingSmall),
         Container(
@@ -178,16 +187,12 @@ class EndPage extends StatelessWidget {
           width: double.infinity,
           child: ElevatedButton(
             onPressed: () {
-              final gameState = context.read<GameState>();
-              gameState.money = 0;
               context.go('/game');
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.black,
               foregroundColor: Colors.white,
-              padding: EdgeInsets.symmetric(
-                vertical: screenHeight * 0.025,
-              ),
+              padding: EdgeInsets.symmetric(vertical: screenHeight * 0.025),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
@@ -205,17 +210,13 @@ class EndPage extends StatelessWidget {
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
-            onPressed: () async {
-              context.read<GameState>().resetGame();
-              await Future.delayed(const Duration(milliseconds: 150));
-              context.go('/login');
+            onPressed: () {
+              context.go("/home");
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.white,
               foregroundColor: Colors.black,
-              padding: EdgeInsets.symmetric(
-                vertical: screenHeight * 0.025,
-              ),
+              padding: EdgeInsets.symmetric(vertical: screenHeight * 0.025),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
                 side: const BorderSide(color: Colors.black, width: 2),

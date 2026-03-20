@@ -65,7 +65,7 @@ const List<Map<String, dynamic>> mediumQuestions = [
   {
     'question': 'Negara dengan populasi terbanyak di dunia adalah?',
     'options': ['India', 'Tiongkok', 'Amerika Serikat', 'Indonesia'],
-    'answer': 'Tiongkok',
+    'answer': 'India',
   },
   {
     'question': 'Siapa penulis novel “Harry Potter”?',

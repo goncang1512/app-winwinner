@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:provider/provider.dart';
-import '../states/game_state.dart';
+import 'package:uts/states/auth_state.dart';
+import 'package:uts/states/http_api.dart';
 import '../widgets/logo.dart';
 
 class LoginPage extends StatefulWidget {
@@ -13,6 +13,8 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _controller = TextEditingController();
+  final _passwordText = TextEditingController();
+  final api = ApiService();
 
   @override
   void dispose() {
@@ -21,18 +23,22 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   // Fungsi untuk memproses login
-  void _login() {
-    final name = _controller.text.trim();
-    if (name.isEmpty) {
+  void _login() async {
+    final email = _controller.text.trim();
+    final password = _passwordText.text.trim();
+    if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Masukkan nama terlebih dahulu!'),
-        ),
+        const SnackBar(content: Text('Masukkan nama terlebih dahulu!')),
       );
       return;
     }
-    // Simpan nama ke GameState
-    context.read<GameState>().setPlayerName(name);
+
+    final data = await api.post("/auth/login", {
+      "email": email,
+      "password": password,
+    });
+
+    await AuthService.saveToken(data['result']['token']);
 
     // Navigasi ke HomePage
     if (context.mounted) {
@@ -73,8 +79,9 @@ class _LoginPageState extends State<LoginPage> {
     return SafeArea(
       child: SingleChildScrollView(
         child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: horizontalPadding)
-              .copyWith(top: screenHeight * 0.1),
+          padding: EdgeInsets.symmetric(
+            horizontal: horizontalPadding,
+          ).copyWith(top: screenHeight * 0.1),
           child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -90,7 +97,7 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-//build layout untuk layar lebar dan rotate
+  //build layout untuk layar lebar dan rotate
   Widget _buildWideLayout(BoxConstraints constraints) {
     // Ukuran dinamis berdasarkan layout
     final screenWidth = constraints.maxWidth;
@@ -126,21 +133,21 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-//widget untuk form
+  //widget untuk form
   Widget _buildLoginForm(
-      double inputFontSize, double buttonFontSize, double screenHeight) {
+    double inputFontSize,
+    double buttonFontSize,
+    double screenHeight,
+  ) {
     return Column(
       children: [
         // Input nama
         TextField(
           controller: _controller,
           textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: inputFontSize,
-          ),
+          style: TextStyle(color: Colors.white, fontSize: inputFontSize),
           decoration: InputDecoration(
-            hintText: 'Masukkan nama...',
+            hintText: 'Masukkan email...',
             hintStyle: TextStyle(
               color: Colors.white70,
               fontSize: inputFontSize * 0.9,
@@ -151,9 +158,27 @@ class _LoginPageState extends State<LoginPage> {
               borderRadius: BorderRadius.circular(20),
               borderSide: BorderSide.none,
             ),
-            contentPadding: EdgeInsets.symmetric(
-              vertical: screenHeight * 0.02,
+            contentPadding: EdgeInsets.symmetric(vertical: screenHeight * 0.02),
+          ),
+        ),
+        SizedBox(height: screenHeight * 0.03),
+        TextField(
+          controller: _passwordText,
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.white, fontSize: inputFontSize),
+          decoration: InputDecoration(
+            hintText: 'Masukkan password...',
+            hintStyle: TextStyle(
+              color: Colors.white70,
+              fontSize: inputFontSize * 0.9,
             ),
+            filled: true,
+            fillColor: Colors.black,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(20),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: EdgeInsets.symmetric(vertical: screenHeight * 0.02),
           ),
         ),
         SizedBox(height: screenHeight * 0.03),
@@ -165,9 +190,7 @@ class _LoginPageState extends State<LoginPage> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.black,
               foregroundColor: Colors.white,
-              padding: EdgeInsets.symmetric(
-                vertical: screenHeight * 0.02,
-              ),
+              padding: EdgeInsets.symmetric(vertical: screenHeight * 0.02),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(20),
               ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:uts/screens/leaderboard_page.dart';
 import '../screens/login_page.dart';
 import '../screens/home_page.dart';
 import '../screens/game_page.dart';
@@ -9,22 +10,14 @@ import '../screens/panduan_page.dart';
 final GoRouter appRouter = GoRouter(
   initialLocation: '/login',
   routes: [
+    GoRoute(path: '/login', builder: (context, state) => const LoginPage()),
+    GoRoute(path: '/home', builder: (context, state) => const HomePage()),
     GoRoute(
-      path: '/login',
-      builder: (context, state) => const LoginPage(),
+      path: '/leaderboard',
+      builder: (context, state) => const LeaderboardPage(),
     ),
-    GoRoute(
-      path: '/home',
-      builder: (context, state) => const HomePage(),
-    ),
-    GoRoute(
-      path: '/game',
-      builder: (context, state) => const GamePage(),
-    ),
-    GoRoute(
-      path: '/panduan',
-      builder: (context, state) => const PanduanPage(),
-    ),
+    GoRoute(path: '/game', builder: (context, state) => const GamePage()),
+    GoRoute(path: '/panduan', builder: (context, state) => const PanduanPage()),
     GoRoute(
       path: '/end/:playerName/:money',
       builder: (context, state) {

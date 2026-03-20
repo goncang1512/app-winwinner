@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 class GameState extends ChangeNotifier {
   String playerName = '';
   int money = 0;
+  final token = null;
 
   // set nama player
   void setPlayerName(String name) {

@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import '../data/questions_data.dart';
+import 'package:uts/states/auth_state.dart';
+import 'package:uts/states/http_api.dart';
 import '../states/game_state.dart';
 import '../widgets/logo.dart';
 import '../widgets/back_button.dart';
@@ -17,45 +18,64 @@ class GamePage extends StatefulWidget {
 }
 
 class _GamePageState extends State<GamePage> {
+  final ApiService api = ApiService();
+
+  bool isLoading = true;
+
   List<Map<String, dynamic>> remainingQuestions = [];
   Map<String, dynamic>? currentQuestion;
   List<String> currentOptions = [];
+
   bool usedFifty = false;
   bool usedRefresh = false;
+
   int timeLeft = 20;
   Timer? timer;
+
   List<int> removedOptions = [];
   bool isAnswered = false;
+
   final formatter = NumberFormat("#,###", "id_ID");
-  final List<int> moneyLevels = [
-    1000,
-    10000,
-    100000,
-    1000000,
-    10000000,
-    100000000,
-    1000000000,
-    10000000000,
-    100000000000,
-    1000000000000,
-  ];
 
   @override
   void initState() {
     super.initState();
-    _loadQuestions(easyQuestions);
-    startTimer();
+    _fetchQuestions();
   }
 
-  List<Map<String, dynamic>> getDifficultyPool(int money) {
-    if (money < 10000000) return easyQuestions;
-    if (money < 1000000000) return mediumQuestions;
-    return hardQuestions;
+  // ================= API =================
+  Future<void> _fetchQuestions() async {
+    try {
+      setState(() => isLoading = true);
+
+      final res = await api.get('/question');
+
+      // HANDLE kalau response object / list
+      if (res is List) {
+        remainingQuestions = List<Map<String, dynamic>>.from(res);
+      } else if (res is Map && res['result'] is List) {
+        remainingQuestions = List<Map<String, dynamic>>.from(res['result']);
+      } else {
+        throw Exception("Format API tidak sesuai");
+      }
+
+      _nextQuestion();
+      startTimer();
+    } catch (e) {
+      print("ERROR FETCH: $e");
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text("Gagal mengambil soal")));
+    } finally {
+      setState(() => isLoading = false);
+    }
   }
 
+  // ================= TIMER =================
   void startTimer() {
     timer?.cancel();
     timeLeft = 20;
+
     timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (timeLeft > 0) {
         setState(() => timeLeft--);
@@ -66,76 +86,86 @@ class _GamePageState extends State<GamePage> {
     });
   }
 
-  void _loadQuestions(List<Map<String, dynamic>> pool) {
-    remainingQuestions = List.from(pool);
-    _nextQuestion();
-  }
-
+  // ================= NEXT QUESTION =================
   void _nextQuestion() {
-    final money = context.read<GameState>().money;
-    final difficultyPool = getDifficultyPool(money);
-    if (remainingQuestions.isEmpty ||
-        !difficultyPool.contains(remainingQuestions.first)) {
-      remainingQuestions = List.from(difficultyPool);
-    }
     if (remainingQuestions.isEmpty) {
       endGame();
       return;
     }
+
     final random = Random();
     final nextQ = remainingQuestions[random.nextInt(remainingQuestions.length)];
+
     remainingQuestions.remove(nextQ);
+
     currentQuestion = nextQ;
-    currentOptions = List<String>.from(nextQ['options']);
-    currentOptions.shuffle(Random());
+
+    // FIX TYPE SAFE
+    currentOptions = List<String>.from(nextQ['options'] ?? []);
+
+    currentOptions.shuffle();
+
     removedOptions.clear();
+
     setState(() {});
   }
 
+  // ================= LIFELINE =================
   void useFifty() {
     if (usedFifty || currentQuestion == null) return;
+
     usedFifty = true;
+
     final correct = currentQuestion!['answer'];
     final wrongOptions = currentOptions.where((o) => o != correct).toList();
+
     wrongOptions.shuffle();
+
     removedOptions = [];
+
     for (int i = 0; i < currentOptions.length; i++) {
       if (wrongOptions.take(2).contains(currentOptions[i])) {
         removedOptions.add(i);
       }
     }
+
     setState(() {});
   }
 
   void useRefresh() {
     if (usedRefresh) return;
+
     usedRefresh = true;
+
     _nextQuestion();
     timeLeft = 20;
+
     setState(() {});
   }
 
+  // ================= CHECK ANSWER =================
   void checkAnswer(String selectedOption) {
     if (isAnswered || currentQuestion == null) return;
+
     isAnswered = true;
+
     final correctAnswer = currentQuestion!['answer'];
     final gameState = context.read<GameState>();
+
     if (selectedOption == correctAnswer) {
-      int currentIndex = moneyLevels.indexOf(gameState.money);
-      if (currentIndex < moneyLevels.length - 1) {
-        gameState.money = moneyLevels[currentIndex + 1];
-      }
+      final point = (currentQuestion!['point'] ?? 0) as int;
+
+      gameState.money += point;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content:
-          Text('Benar! Uang sekarang: Rp ${formatter.format(gameState.money)}'),
+          content: Text(
+            'Benar! +${formatter.format(point)} | Total: Rp ${formatter.format(gameState.money)}',
+          ),
           duration: const Duration(seconds: 1),
         ),
       );
-      if (gameState.money >= 1000000000000) {
-        Future.delayed(const Duration(seconds: 1), endGame);
-        return;
-      }
+
       Future.delayed(const Duration(seconds: 1), () {
         isAnswered = false;
         timeLeft = 20;
@@ -148,17 +178,30 @@ class _GamePageState extends State<GamePage> {
           duration: Duration(seconds: 1),
         ),
       );
+
       Future.delayed(const Duration(seconds: 1), endGame);
     }
   }
 
-  void endGame() {
+  // ================= END GAME =================
+  void endGame() async {
     timer?.cancel();
+
+    final session = await AuthService.getSession();
     final gameState = context.read<GameState>();
-    final playerName =
-    gameState.playerName.isNotEmpty ? gameState.playerName : 'Guest';
+
+    final playerName = session?['result']['username'] ?? 'Guest';
+
     final totalMoney = gameState.money;
+
     final bool isWin = totalMoney >= 1000000000000;
+
+    await api.post("/score/update-score", {
+      "score": session?['result']['score'],
+    });
+
+    gameState.resetGame();
+
     context.go(
       '/end/${Uri.encodeComponent(playerName)}/$totalMoney',
       extra: {'isWin': isWin},
@@ -171,10 +214,11 @@ class _GamePageState extends State<GamePage> {
     super.dispose();
   }
 
-  //build utama
+  // ================= BUILD =================
   @override
   Widget build(BuildContext context) {
-    if (currentQuestion == null) {
+    // ✅ LOADING FIX (ini yang kamu minta)
+    if (isLoading || currentQuestion == null) {
       return const Scaffold(
         backgroundColor: Color(0xFFFFB300),
         body: Center(child: CircularProgressIndicator(color: Colors.black)),
@@ -191,7 +235,7 @@ class _GamePageState extends State<GamePage> {
         leading: BackButtonWidget(
           onPressed: () {
             final gameState = context.read<GameState>();
-            gameState.money = 1000;
+            gameState.money = 0;
             context.go('/home');
           },
         ),
@@ -216,7 +260,6 @@ class _GamePageState extends State<GamePage> {
       body: LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth > 650) {
-            // Breakpoint 650
             return _buildWideLayout(context, constraints);
           } else {
             return _buildNarrowLayout(context, constraints);
@@ -247,7 +290,10 @@ class _GamePageState extends State<GamePage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            SizedBox(height: logoSize, child: Logo(size: logoSize)),
+            SizedBox(
+              height: logoSize,
+              child: Logo(size: logoSize),
+            ),
             SizedBox(height: spacingSmall),
             // bantuan
             Row(
@@ -255,7 +301,11 @@ class _GamePageState extends State<GamePage> {
               children: [
                 _helpButton('50:50', usedFifty, useFifty, helpButtonDiameter),
                 _helpButtonIcon(
-                    Icons.refresh, usedRefresh, useRefresh, helpButtonDiameter),
+                  Icons.refresh,
+                  usedRefresh,
+                  useRefresh,
+                  helpButtonDiameter,
+                ),
               ],
             ),
             SizedBox(height: spacingMedium),
@@ -301,9 +351,17 @@ class _GamePageState extends State<GamePage> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     _helpButton(
-                        '50:50', usedFifty, useFifty, helpButtonDiameter),
-                    _helpButtonIcon(Icons.refresh, usedRefresh, useRefresh,
-                        helpButtonDiameter),
+                      '50:50',
+                      usedFifty,
+                      useFifty,
+                      helpButtonDiameter,
+                    ),
+                    _helpButtonIcon(
+                      Icons.refresh,
+                      usedRefresh,
+                      useRefresh,
+                      helpButtonDiameter,
+                    ),
                   ],
                 ),
                 SizedBox(height: spacingMedium),
@@ -335,7 +393,11 @@ class _GamePageState extends State<GamePage> {
   }
 
   Widget _helpButton(
-      String text, bool used, VoidCallback onPressed, double diameter) {
+    String text,
+    bool used,
+    VoidCallback onPressed,
+    double diameter,
+  ) {
     return AnimatedOpacity(
       opacity: used ? 0.4 : 1.0,
       duration: const Duration(milliseconds: 300),
@@ -368,7 +430,11 @@ class _GamePageState extends State<GamePage> {
   }
 
   Widget _helpButtonIcon(
-      IconData icon, bool used, VoidCallback onPressed, double diameter) {
+    IconData icon,
+    bool used,
+    VoidCallback onPressed,
+    double diameter,
+  ) {
     return AnimatedOpacity(
       opacity: used ? 0.4 : 1.0,
       duration: const Duration(milliseconds: 300),
@@ -390,7 +456,11 @@ class _GamePageState extends State<GamePage> {
   }
 
   Widget _moneyBox(
-      int money, double fontSize, double screenHeight, double screenWidth) {
+    int money,
+    double fontSize,
+    double screenHeight,
+    double screenWidth,
+  ) {
     return Container(
       padding: EdgeInsets.symmetric(
         vertical: screenHeight * 0.01,
@@ -434,7 +504,10 @@ class _GamePageState extends State<GamePage> {
   }
 
   Widget _answerButtons(
-      double screenHeight, List<String> options, double buttonFont) {
+    double screenHeight,
+    List<String> options,
+    double buttonFont,
+  ) {
     return Column(
       children: List.generate(options.length, (i) {
         final disabled = removedOptions.contains(i);
