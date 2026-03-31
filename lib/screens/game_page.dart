@@ -33,7 +33,11 @@ class _GamePageState extends State<GamePage> {
   Timer? timer;
 
   List<int> removedOptions = [];
-  bool isAnswered = false;
+
+  // ✅ FIX: Ganti isAnswered -> _isProcessing
+  // isAnswered sebelumnya di-set TRUE sebelum masuk _handleWrongAnswer,
+  // sehingga guard "if (isAnswered) return" langsung memblokir logika HP.
+  bool _isProcessing = false;
 
   final formatter = NumberFormat("#,###", "id_ID");
 
@@ -50,7 +54,6 @@ class _GamePageState extends State<GamePage> {
 
       final res = await api.get('/question');
 
-      // HANDLE kalau response object / list
       if (res is List) {
         remainingQuestions = List<Map<String, dynamic>>.from(res);
       } else if (res is Map && res['result'] is List) {
@@ -60,28 +63,40 @@ class _GamePageState extends State<GamePage> {
       }
 
       _nextQuestion();
-      startTimer();
     } catch (e) {
-      print("ERROR FETCH: $e");
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text("Gagal mengambil soal")));
+      debugPrint("ERROR FETCH: $e");
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text("Gagal mengambil soal")));
+      }
     } finally {
-      setState(() => isLoading = false);
+      if (mounted) {
+        setState(() => isLoading = false);
+        // ✅ FIX: Timer dimulai setelah frame pertama selesai render,
+        // bukan di tengah-tengah proses loading/setState.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          startTimer();
+        });
+      }
     }
   }
 
   // ================= TIMER =================
   void startTimer() {
     timer?.cancel();
-    timeLeft = 20;
+    setState(() => timeLeft = 20);
 
     timer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
       if (timeLeft > 0) {
         setState(() => timeLeft--);
       } else {
         t.cancel();
-        endGame();
+        _handleWrongAnswer(reason: 'Waktu habis!');
       }
     });
   }
@@ -95,19 +110,14 @@ class _GamePageState extends State<GamePage> {
 
     final random = Random();
     final nextQ = remainingQuestions[random.nextInt(remainingQuestions.length)];
-
     remainingQuestions.remove(nextQ);
 
     currentQuestion = nextQ;
-
-    // FIX TYPE SAFE
     currentOptions = List<String>.from(nextQ['options'] ?? []);
-
     currentOptions.shuffle();
-
     removedOptions.clear();
 
-    setState(() {});
+    if (mounted) setState(() {});
   }
 
   // ================= LIFELINE =================
@@ -118,9 +128,7 @@ class _GamePageState extends State<GamePage> {
 
     final correct = currentQuestion!['answer'];
     final wrongOptions = currentOptions.where((o) => o != correct).toList();
-
     wrongOptions.shuffle();
-
     removedOptions = [];
 
     for (int i = 0; i < currentOptions.length; i++) {
@@ -136,50 +144,84 @@ class _GamePageState extends State<GamePage> {
     if (usedRefresh) return;
 
     usedRefresh = true;
-
     _nextQuestion();
-    timeLeft = 20;
+    startTimer();
+  }
 
-    setState(() {});
+  // ================= HANDLE WRONG / TIME OUT =================
+  void _handleWrongAnswer({required String reason}) {
+    // ✅ FIX: Guard ini sekarang aman karena _isProcessing TIDAK di-set
+    // sebelum memanggil fungsi ini (berbeda dengan bug sebelumnya).
+    if (_isProcessing) return;
+    _isProcessing = true;
+
+    timer?.cancel();
+
+    final gameState = context.read<GameState>();
+    final stillAlive = gameState.loseHp(); // ❤️ kurangi HP
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            stillAlive
+                ? '$reason Sisa HP: ${gameState.hp} ❤️'
+                : '$reason Game Over!',
+          ),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    }
+
+    Future.delayed(const Duration(seconds: 1), () {
+      if (!mounted) return;
+      _isProcessing = false;
+
+      if (stillAlive) {
+        _nextQuestion();
+        startTimer();
+      } else {
+        endGame();
+      }
+    });
   }
 
   // ================= CHECK ANSWER =================
   void checkAnswer(String selectedOption) {
-    if (isAnswered || currentQuestion == null) return;
+    if (_isProcessing || currentQuestion == null) return;
 
-    isAnswered = true;
+    timer?.cancel();
 
     final correctAnswer = currentQuestion!['answer'];
     final gameState = context.read<GameState>();
 
     if (selectedOption == correctAnswer) {
-      final point = (currentQuestion!['point'] ?? 0) as int;
+      _isProcessing = true;
 
+      final point = (currentQuestion!['point'] ?? 0) as int;
       gameState.money += point;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Benar! +${formatter.format(point)} | Total: Rp ${formatter.format(gameState.money)}',
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Benar! +${formatter.format(point)} | Total: Rp ${formatter.format(gameState.money)}',
+            ),
+            duration: const Duration(seconds: 1),
           ),
-          duration: const Duration(seconds: 1),
-        ),
-      );
+        );
+      }
 
       Future.delayed(const Duration(seconds: 1), () {
-        isAnswered = false;
-        timeLeft = 20;
+        if (!mounted) return;
+        _isProcessing = false;
         _nextQuestion();
+        startTimer();
       });
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Salah! Permainan Berakhir'),
-          duration: Duration(seconds: 1),
-        ),
-      );
-
-      Future.delayed(const Duration(seconds: 1), endGame);
+      // ✅ FIX: Langsung panggil tanpa set _isProcessing lebih dulu,
+      // biarkan _handleWrongAnswer yang mengatur sendiri.
+      _handleWrongAnswer(reason: 'Salah!');
     }
   }
 
@@ -188,24 +230,23 @@ class _GamePageState extends State<GamePage> {
     timer?.cancel();
 
     final session = await AuthService.getSession();
+    if (!mounted) return;
+
     final gameState = context.read<GameState>();
-
     final playerName = session?['result']['username'] ?? 'Guest';
-
     final totalMoney = gameState.money;
-
     final bool isWin = totalMoney >= 1000000000000;
 
-    await api.post("/score/update-score", {
-      "score": session?['result']['score'],
-    });
+    await api.post("/score/update-score", {"score": totalMoney});
 
     gameState.resetGame();
 
-    context.go(
-      '/end/${Uri.encodeComponent(playerName)}/$totalMoney',
-      extra: {'isWin': isWin},
-    );
+    if (mounted) {
+      context.go(
+        '/end/${Uri.encodeComponent(playerName)}/$totalMoney',
+        extra: {'isWin': isWin},
+      );
+    }
   }
 
   @override
@@ -214,10 +255,27 @@ class _GamePageState extends State<GamePage> {
     super.dispose();
   }
 
+  // ================= HP WIDGET =================
+  Widget _buildHpWidget(int hp) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(3, (i) {
+        final active = i < hp;
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: Icon(
+            active ? Icons.favorite : Icons.favorite_border,
+            color: active ? Colors.red : Colors.white54,
+            size: 26,
+          ),
+        );
+      }),
+    );
+  }
+
   // ================= BUILD =================
   @override
   Widget build(BuildContext context) {
-    // ✅ LOADING FIX (ini yang kamu minta)
     if (isLoading || currentQuestion == null) {
       return const Scaffold(
         backgroundColor: Color(0xFFFFB300),
@@ -225,6 +283,7 @@ class _GamePageState extends State<GamePage> {
       );
     }
 
+    final hp = context.watch<GameState>().hp;
     final timerSize = 35.0;
 
     return Scaffold(
@@ -234,8 +293,9 @@ class _GamePageState extends State<GamePage> {
         elevation: 0,
         leading: BackButtonWidget(
           onPressed: () {
+            timer?.cancel();
             final gameState = context.read<GameState>();
-            gameState.money = 0;
+            gameState.resetGame();
             context.go('/home');
           },
         ),
@@ -256,6 +316,12 @@ class _GamePageState extends State<GamePage> {
             ),
           ),
         ),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 12),
+            child: Center(child: _buildHpWidget(hp)),
+          ),
+        ],
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -269,12 +335,10 @@ class _GamePageState extends State<GamePage> {
     );
   }
 
-  //build layout untuk hp
   Widget _buildNarrowLayout(BuildContext context, BoxConstraints constraints) {
     final money = context.watch<GameState>().money;
     final q = currentQuestion!;
 
-    // Ukuran dinamis
     final screenWidth = constraints.maxWidth;
     final screenHeight = constraints.maxHeight;
     final logoSize = screenHeight * 0.22;
@@ -295,7 +359,6 @@ class _GamePageState extends State<GamePage> {
               child: Logo(size: logoSize),
             ),
             SizedBox(height: spacingSmall),
-            // bantuan
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -320,24 +383,20 @@ class _GamePageState extends State<GamePage> {
     );
   }
 
-  //build layout untuk layar lebar
   Widget _buildWideLayout(BuildContext context, BoxConstraints constraints) {
     final money = context.watch<GameState>().money;
     final q = currentQuestion!;
 
-    // Ukuran dinamis
     final screenWidth = constraints.maxWidth;
     final screenHeight = constraints.maxHeight;
     final logoSize = screenWidth * 0.12;
     final fontSize = screenWidth * 0.02;
     final buttonFont = screenWidth * 0.022;
     final spacingMedium = screenHeight * 0.03;
-
     final helpButtonDiameter = screenWidth * 0.07;
 
     return Row(
       children: [
-        //SISI KIRI: INFO (Logo, Bantuan, Uang)
         Expanded(
           flex: 2,
           child: Padding(
@@ -370,8 +429,6 @@ class _GamePageState extends State<GamePage> {
             ),
           ),
         ),
-
-        //SISI KANAN: AKSI (Pertanyaan, Jawaban)
         Expanded(
           flex: 3,
           child: SingleChildScrollView(

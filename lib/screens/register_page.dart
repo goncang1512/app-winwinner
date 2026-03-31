@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:uts/states/auth_state.dart';
 import 'package:uts/states/http_api.dart';
 import '../widgets/logo.dart';
 
-class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+class RegisterPage extends StatefulWidget {
+  const RegisterPage({super.key});
 
   @override
-  State<LoginPage> createState() => _LoginPageState();
+  State<RegisterPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _LoginPageState extends State<RegisterPage> {
   final _controller = TextEditingController();
   final _passwordText = TextEditingController();
+  final _usernameteText = TextEditingController();
   final api = ApiService();
 
   @override
@@ -26,6 +26,7 @@ class _LoginPageState extends State<LoginPage> {
   void _login() async {
     final email = _controller.text.trim();
     final password = _passwordText.text.trim();
+    final username = _usernameteText.text.trim();
     if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Masukkan nama terlebih dahulu!')),
@@ -33,16 +34,15 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    final data = await api.post("/auth/login", {
+    await api.post("/auth/signup", {
+      "username": username,
       "email": email,
       "password": password,
     });
 
-    await AuthService.saveToken(data['result']['token']);
-
     // Navigasi ke HomePage
     if (context.mounted) {
-      context.go('/home');
+      context.go('/login');
     }
   }
 
@@ -143,6 +143,26 @@ class _LoginPageState extends State<LoginPage> {
       children: [
         // Input nama
         TextField(
+          controller: _usernameteText,
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.white, fontSize: inputFontSize),
+          decoration: InputDecoration(
+            hintText: 'Masukkan username...',
+            hintStyle: TextStyle(
+              color: Colors.white70,
+              fontSize: inputFontSize * 0.9,
+            ),
+            filled: true,
+            fillColor: Colors.black,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(20),
+              borderSide: BorderSide.none,
+            ),
+            contentPadding: EdgeInsets.symmetric(vertical: screenHeight * 0.02),
+          ),
+        ),
+        SizedBox(height: screenHeight * 0.03),
+        TextField(
           controller: _controller,
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.white, fontSize: inputFontSize),
@@ -212,7 +232,7 @@ class _LoginPageState extends State<LoginPage> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              'Belum punya akun? ',
+              'Sudah punya akun? ',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: inputFontSize * 0.9,
@@ -220,10 +240,10 @@ class _LoginPageState extends State<LoginPage> {
             ),
             GestureDetector(
               onTap: () {
-                context.go('/register'); // route ke halaman register
+                context.go('/login'); // route ke halaman register
               },
               child: Text(
-                'Daftar di sini',
+                'Login di sini',
                 style: TextStyle(
                   color: Colors.black,
                   fontWeight: FontWeight.bold,

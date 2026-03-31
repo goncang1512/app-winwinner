@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class GameState extends ChangeNotifier {
   String playerName = '';
+  int hp = 3;
   int money = 0;
   final token = null;
 
@@ -19,8 +20,18 @@ class GameState extends ChangeNotifier {
     notifyListeners();
   }
 
+  // kurangi HP, return true kalau masih hidup, false kalau game over
+  bool loseHp() {
+    if (hp > 0) hp--;
+    notifyListeners();
+    return hp > 0;
+  }
+
+  bool get isAlive => hp > 0;
+
   void resetGame() {
     money = 0;
+    hp = 3;
     playerName = '';
     notifyListeners();
   }
