@@ -17,8 +17,24 @@ class _LoginPageState extends State<LoginPage> {
   final api = ApiService();
 
   @override
+  void initState() {
+    super.initState();
+    // ✅ Cek token saat halaman pertama kali dibuka
+    _checkToken();
+  }
+
+  // Jika sudah ada token, langsung ke /home
+  Future<void> _checkToken() async {
+    final token = await AuthService.getToken();
+    if (token != null && token.isNotEmpty) {
+      if (mounted) context.go('/home');
+    }
+  }
+
+  @override
   void dispose() {
     _controller.dispose();
+    _passwordText.dispose();
     super.dispose();
   }
 
@@ -26,23 +42,29 @@ class _LoginPageState extends State<LoginPage> {
   void _login() async {
     final email = _controller.text.trim();
     final password = _passwordText.text.trim();
+
     if (email.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Masukkan nama terlebih dahulu!')),
+        const SnackBar(content: Text('Masukkan email terlebih dahulu!')),
       );
       return;
     }
 
-    final data = await api.post("/auth/login", {
-      "email": email,
-      "password": password,
-    });
+    try {
+      final data = await api.post("/auth/login", {
+        "email": email,
+        "password": password,
+      });
 
-    await AuthService.saveToken(data['result']['token']);
+      await AuthService.saveToken(data['result']['token']);
 
-    // Navigasi ke HomePage
-    if (context.mounted) {
-      context.go('/home');
+      if (mounted) context.go('/home');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Login gagal: ${e.toString()}')));
+      }
     }
   }
 
@@ -52,12 +74,9 @@ class _LoginPageState extends State<LoginPage> {
       backgroundColor: const Color(0xFFFFB300),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          // Tentukan breakpoint Anda. 600 adalah standar umum.
           if (constraints.maxWidth > 600) {
-            // --- TAMPILAN LEBAR (TABLET / WEB) ---
             return _buildWideLayout(constraints);
           } else {
-            // --- TAMPILAN SEMPIT (HP - POTRET ATAU LANDSCAPE) ---
             return _buildNarrowLayout(constraints);
           }
         },
@@ -65,9 +84,7 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  //build layout untuk layar hp
   Widget _buildNarrowLayout(BoxConstraints constraints) {
-    // Ukuran dinamis berdasarkan layout
     final screenWidth = constraints.maxWidth;
     final screenHeight = constraints.maxHeight;
     final logoSize = screenHeight * 0.35;
@@ -86,7 +103,7 @@ class _LoginPageState extends State<LoginPage> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Logo(size: logoSize * 0.8), // Logo
+                Logo(size: logoSize * 0.8),
                 SizedBox(height: verticalSpacing),
                 _buildLoginForm(inputFontSize, buttonFontSize, screenHeight),
               ],
@@ -97,9 +114,7 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  //build layout untuk layar lebar dan rotate
   Widget _buildWideLayout(BoxConstraints constraints) {
-    // Ukuran dinamis berdasarkan layout
     final screenWidth = constraints.maxWidth;
     final screenHeight = constraints.maxHeight;
     final logoSize = screenWidth * 0.25;
@@ -117,7 +132,6 @@ class _LoginPageState extends State<LoginPage> {
               flex: 1,
               child: Center(child: Logo(size: logoSize)),
             ),
-
             Expanded(
               flex: 1,
               child: Column(
@@ -133,7 +147,6 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  //widget untuk form
   Widget _buildLoginForm(
     double inputFontSize,
     double buttonFontSize,
@@ -141,7 +154,6 @@ class _LoginPageState extends State<LoginPage> {
   ) {
     return Column(
       children: [
-        // Input nama
         TextField(
           controller: _controller,
           textAlign: TextAlign.center,
@@ -164,6 +176,7 @@ class _LoginPageState extends State<LoginPage> {
         SizedBox(height: screenHeight * 0.03),
         TextField(
           controller: _passwordText,
+          obscureText: true,
           textAlign: TextAlign.center,
           style: TextStyle(color: Colors.white, fontSize: inputFontSize),
           decoration: InputDecoration(
@@ -182,8 +195,6 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ),
         SizedBox(height: screenHeight * 0.03),
-
-        // Tombol masuk
         SizedBox(
           width: double.infinity,
           child: ElevatedButton(
@@ -205,9 +216,7 @@ class _LoginPageState extends State<LoginPage> {
             ),
           ),
         ),
-
         SizedBox(height: screenHeight * 0.02),
-
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -219,9 +228,7 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ),
             GestureDetector(
-              onTap: () {
-                context.go('/register'); // route ke halaman register
-              },
+              onTap: () => context.go('/register'),
               child: Text(
                 'Daftar di sini',
                 style: TextStyle(
