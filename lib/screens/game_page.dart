@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -20,7 +21,11 @@ class GamePage extends StatefulWidget {
 class _GamePageState extends State<GamePage> {
   final ApiService api = ApiService();
 
+  // ✅ Satu AudioPlayer saja untuk semua sound
+  final AudioPlayer _audioPlayer = AudioPlayer();
+
   bool isLoading = true;
+  bool _gameStartSoundDone = false; // ✅ Flag agar game-dimulai hanya sekali
 
   List<Map<String, dynamic>> remainingQuestions = [];
   Map<String, dynamic>? currentQuestion;
@@ -33,10 +38,6 @@ class _GamePageState extends State<GamePage> {
   Timer? timer;
 
   List<int> removedOptions = [];
-
-  // ✅ FIX: Ganti isAnswered -> _isProcessing
-  // isAnswered sebelumnya di-set TRUE sebelum masuk _handleWrongAnswer,
-  // sehingga guard "if (isAnswered) return" langsung memblokir logika HP.
   bool _isProcessing = false;
 
   final formatter = NumberFormat("#,###", "id_ID");
@@ -44,7 +45,63 @@ class _GamePageState extends State<GamePage> {
   @override
   void initState() {
     super.initState();
+    _setupAudio();
     _fetchQuestions();
+  }
+
+  // ================= AUDIO SETUP =================
+  Future<void> _setupAudio() async {
+    // Set audio context agar tidak bentrok dengan sistem
+    await AudioPlayer.global.setAudioContext(
+      AudioContext(
+        android: AudioContextAndroid(
+          audioFocus: AndroidAudioFocus.gain,
+          usageType: AndroidUsageType.game,
+          contentType: AndroidContentType.music,
+          isSpeakerphoneOn: false,
+          stayAwake: false,
+        ),
+        iOS: AudioContextIOS(
+          category: AVAudioSessionCategory.playback,
+          options: {},
+        ),
+      ),
+    );
+  }
+
+  // ================= SOUND =================
+  Future<void> _playGameStart() async {
+    if (_gameStartSoundDone) return;
+    _gameStartSoundDone = true;
+
+    try {
+      await _audioPlayer.setReleaseMode(ReleaseMode.release);
+      await _audioPlayer.setVolume(0.6);
+      await _audioPlayer.play(AssetSource('sound/game-dimulai.mp3'));
+
+      // Tunggu sampai selesai baru lanjut ke heartbeat
+      await _audioPlayer.onPlayerComplete.first;
+    } catch (e) {
+      debugPrint('Game start sound error: $e');
+    }
+  }
+
+  Future<void> _playHeartbeat() async {
+    try {
+      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+      await _audioPlayer.setVolume(1.0);
+      await _audioPlayer.play(AssetSource('sound/detak-jantung.mp3'));
+    } catch (e) {
+      debugPrint('Heartbeat sound error: $e');
+    }
+  }
+
+  Future<void> _stopSound() async {
+    try {
+      await _audioPlayer.stop();
+    } catch (e) {
+      debugPrint('Stop sound error: $e');
+    }
   }
 
   // ================= API =================
@@ -73,10 +130,12 @@ class _GamePageState extends State<GamePage> {
     } finally {
       if (mounted) {
         setState(() => isLoading = false);
-        // ✅ FIX: Timer dimulai setelah frame pertama selesai render,
-        // bukan di tengah-tengah proses loading/setState.
-        WidgetsBinding.instance.addPostFrameCallback((_) {
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          // ✅ Urutan: game-dimulai selesai dulu → baru heartbeat + timer
+          await _playGameStart();
+          if (!mounted) return;
           startTimer();
+          await _playHeartbeat();
         });
       }
     }
@@ -123,7 +182,6 @@ class _GamePageState extends State<GamePage> {
   // ================= LIFELINE =================
   void useFifty() {
     if (usedFifty || currentQuestion == null) return;
-
     usedFifty = true;
 
     final correct = currentQuestion!['answer'];
@@ -136,29 +194,27 @@ class _GamePageState extends State<GamePage> {
         removedOptions.add(i);
       }
     }
-
     setState(() {});
   }
 
   void useRefresh() {
     if (usedRefresh) return;
-
     usedRefresh = true;
     _nextQuestion();
     startTimer();
+    _playHeartbeat();
   }
 
   // ================= HANDLE WRONG / TIME OUT =================
   void _handleWrongAnswer({required String reason}) {
-    // ✅ FIX: Guard ini sekarang aman karena _isProcessing TIDAK di-set
-    // sebelum memanggil fungsi ini (berbeda dengan bug sebelumnya).
     if (_isProcessing) return;
     _isProcessing = true;
 
     timer?.cancel();
+    _stopSound(); // ✅ Stop heartbeat
 
     final gameState = context.read<GameState>();
-    final stillAlive = gameState.loseHp(); // ❤️ kurangi HP
+    final stillAlive = gameState.loseHp();
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -180,6 +236,7 @@ class _GamePageState extends State<GamePage> {
       if (stillAlive) {
         _nextQuestion();
         startTimer();
+        _playHeartbeat(); // ✅ Restart heartbeat untuk soal berikutnya
       } else {
         endGame();
       }
@@ -191,6 +248,7 @@ class _GamePageState extends State<GamePage> {
     if (_isProcessing || currentQuestion == null) return;
 
     timer?.cancel();
+    _stopSound(); // ✅ Stop heartbeat
 
     final correctAnswer = currentQuestion!['answer'];
     final gameState = context.read<GameState>();
@@ -217,10 +275,9 @@ class _GamePageState extends State<GamePage> {
         _isProcessing = false;
         _nextQuestion();
         startTimer();
+        _playHeartbeat(); // ✅ Restart heartbeat untuk soal berikutnya
       });
     } else {
-      // ✅ FIX: Langsung panggil tanpa set _isProcessing lebih dulu,
-      // biarkan _handleWrongAnswer yang mengatur sendiri.
       _handleWrongAnswer(reason: 'Salah!');
     }
   }
@@ -228,6 +285,7 @@ class _GamePageState extends State<GamePage> {
   // ================= END GAME =================
   void endGame() async {
     timer?.cancel();
+    _stopSound(); // ✅ Stop semua sound
 
     final session = await AuthService.getSession();
     if (!mounted) return;
@@ -252,6 +310,7 @@ class _GamePageState extends State<GamePage> {
   @override
   void dispose() {
     timer?.cancel();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
@@ -294,6 +353,7 @@ class _GamePageState extends State<GamePage> {
         leading: BackButtonWidget(
           onPressed: () {
             timer?.cancel();
+            _stopSound();
             final gameState = context.read<GameState>();
             gameState.resetGame();
             context.go('/home');
