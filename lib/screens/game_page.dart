@@ -36,7 +36,7 @@ class _GamePageState extends State<GamePage> {
   bool usedFifty = false;
   bool usedRefresh = false;
 
-  int timeLeft = 20;
+  int timeLeft = 60;
   Timer? timer;
 
   List<int> removedOptions = [];
