@@ -20,6 +20,8 @@ class GamePage extends StatefulWidget {
 
 class _GamePageState extends State<GamePage> {
   final ApiService api = ApiService();
+  int currentQuestionIndex = 0;
+  int totalQuestions = 0;
 
   // ✅ Satu AudioPlayer saja untuk semua sound
   final AudioPlayer _audioPlayer = AudioPlayer();
@@ -50,6 +52,27 @@ class _GamePageState extends State<GamePage> {
   }
 
   // ================= AUDIO SETUP =================
+  Future<void> _playCorrect() async {
+    try {
+      await _audioPlayer.setReleaseMode(ReleaseMode.release);
+      await _audioPlayer.setVolume(0.9);
+
+      await _audioPlayer.play(AssetSource('sound/jawaban-benar.mpeg'));
+    } catch (e) {
+      debugPrint('Correct sound error: $e');
+    }
+  }
+
+  Future<void> _playWrong() async {
+    try {
+      await _audioPlayer.setReleaseMode(ReleaseMode.release);
+      await _audioPlayer.setVolume(0.9);
+      await _audioPlayer.play(AssetSource('sound/jawaban-salah.mp3'));
+    } catch (e) {
+      debugPrint('Wrong sound error: $e');
+    }
+  }
+
   Future<void> _setupAudio() async {
     // Set audio context agar tidak bentrok dengan sistem
     await AudioPlayer.global.setAudioContext(
@@ -90,7 +113,7 @@ class _GamePageState extends State<GamePage> {
     try {
       await _audioPlayer.setReleaseMode(ReleaseMode.loop);
       await _audioPlayer.setVolume(1.0);
-      await _audioPlayer.play(AssetSource('sound/detak-jantung.mp3'));
+      await _audioPlayer.play(AssetSource('sound/detak-jantung.mpeg'));
     } catch (e) {
       debugPrint('Heartbeat sound error: $e');
     }
@@ -120,6 +143,7 @@ class _GamePageState extends State<GamePage> {
       }
 
       _nextQuestion();
+      totalQuestions = remainingQuestions.length + 1;
     } catch (e) {
       debugPrint("ERROR FETCH: $e");
       if (mounted) {
@@ -176,6 +200,13 @@ class _GamePageState extends State<GamePage> {
     currentOptions.shuffle();
     removedOptions.clear();
 
+    // ✅ Reset lifeline tiap soal baru
+    usedFifty = false;
+    usedRefresh = false;
+
+    // ✅ Tambah counter
+    currentQuestionIndex++;
+
     if (mounted) setState(() {});
   }
 
@@ -211,7 +242,7 @@ class _GamePageState extends State<GamePage> {
     _isProcessing = true;
 
     timer?.cancel();
-    _stopSound(); // ✅ Stop heartbeat
+    _stopSound();
 
     final gameState = context.read<GameState>();
     final stillAlive = gameState.loseHp();
@@ -224,22 +255,25 @@ class _GamePageState extends State<GamePage> {
                 ? '$reason Sisa HP: ${gameState.hp} ❤️'
                 : '$reason Game Over!',
           ),
-          duration: const Duration(seconds: 1),
+          duration: const Duration(seconds: 2),
         ),
       );
     }
 
-    Future.delayed(const Duration(seconds: 1), () {
-      if (!mounted) return;
-      _isProcessing = false;
+    // ✅ Tunggu sound salah selesai dulu, baru lanjut
+    _playWrong().then((_) {
+      _audioPlayer.onPlayerComplete.first.then((_) {
+        if (!mounted) return;
+        _isProcessing = false;
 
-      if (stillAlive) {
-        _nextQuestion();
-        startTimer();
-        _playHeartbeat(); // ✅ Restart heartbeat untuk soal berikutnya
-      } else {
-        endGame();
-      }
+        if (stillAlive) {
+          _nextQuestion();
+          startTimer();
+          _playHeartbeat();
+        } else {
+          endGame();
+        }
+      });
     });
   }
 
@@ -248,7 +282,7 @@ class _GamePageState extends State<GamePage> {
     if (_isProcessing || currentQuestion == null) return;
 
     timer?.cancel();
-    _stopSound(); // ✅ Stop heartbeat
+    _stopSound(); // Stop heartbeat
 
     final correctAnswer = currentQuestion!['answer'];
     final gameState = context.read<GameState>();
@@ -265,27 +299,58 @@ class _GamePageState extends State<GamePage> {
             content: Text(
               'Benar! +${formatter.format(point)} | Total: Rp ${formatter.format(gameState.money)}',
             ),
-            duration: const Duration(seconds: 1),
+            duration: const Duration(seconds: 2),
           ),
         );
       }
 
-      Future.delayed(const Duration(seconds: 1), () {
-        if (!mounted) return;
-        _isProcessing = false;
-        _nextQuestion();
-        startTimer();
-        _playHeartbeat(); // ✅ Restart heartbeat untuk soal berikutnya
+      // ✅ Play dulu, tunggu selesai, baru lanjut
+      _playCorrect().then((_) {
+        _audioPlayer.onPlayerComplete.first.then((_) {
+          if (!mounted) return;
+          _isProcessing = false;
+          _nextQuestion();
+          startTimer();
+          _playHeartbeat();
+        });
       });
     } else {
-      _handleWrongAnswer(reason: 'Salah!');
+      _isProcessing = true;
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Salah!'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+
+      final gameState2 = context.read<GameState>();
+      final stillAlive = gameState2.loseHp();
+
+      // ✅ Play dulu, tunggu selesai, baru lanjut — TIDAK panggil _handleWrongAnswer
+      _playWrong().then((_) {
+        _audioPlayer.onPlayerComplete.first.then((_) {
+          if (!mounted) return;
+          _isProcessing = false;
+
+          if (stillAlive) {
+            _nextQuestion();
+            startTimer();
+            _playHeartbeat();
+          } else {
+            endGame();
+          }
+        });
+      });
     }
   }
 
   // ================= END GAME =================
   void endGame() async {
     timer?.cancel();
-    _stopSound(); // ✅ Stop semua sound
+    await _stopSound(); // ✅ Stop semua sound
 
     final session = await AuthService.getSession();
     if (!mounted) return;
@@ -422,7 +487,12 @@ class _GamePageState extends State<GamePage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _helpButton('50:50', usedFifty, useFifty, helpButtonDiameter),
+                _helpButton(
+                  '$currentQuestionIndex:$totalQuestions',
+                  usedFifty,
+                  useFifty,
+                  helpButtonDiameter,
+                ),
                 _helpButtonIcon(
                   Icons.refresh,
                   usedRefresh,
